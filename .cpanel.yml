@@ -1,4 +1,5 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/gstsaudicpanel/public_html/react/
-    - /bin/cp -R . $DEPLOYPATH
+    - /bin/mkdir -p $DEPLOYPATH
+    - /bin/cp -R assets index.html favicon.ico favicon.png placeholder.svg robots.txt .htaccess $DEPLOYPATH
