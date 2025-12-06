@@ -1,10 +1,31 @@
 <?php
-// Remove ANY whitespace before this line - check with hex editor if needed
 ob_start();
 error_reporting(0);
 ini_set('display_errors', 0);
 
-header('Access-Control-Allow-Origin: *'); 
+// Rate limiting - allow only 3 submissions per hour per IP
+session_start();
+$ip = $_SERVER['REMOTE_ADDR'];
+$current_time = time();
+$rate_limit_file = sys_get_temp_dir() . '/form_rate_limit_' . md5($ip) . '.txt';
+
+if (file_exists($rate_limit_file)) {
+    $submissions = json_decode(file_get_contents($rate_limit_file), true);
+    $submissions = array_filter($submissions, function($time) use ($current_time) {
+        return ($current_time - $time) < 3600; // Keep submissions from last hour
+    });
+    
+    if (count($submissions) >= 3) {
+        ob_end_clean();
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Too many requests. Please try again later.'], JSON_UNESCAPED_UNICODE);
+        exit();
+    }
+} else {
+    $submissions = [];
+}
+
+header('Access-Control-Allow-Origin: https://gstsaudi.com'); // Change * to your domain
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 header('Content-Type: application/json; charset=UTF-8');
@@ -65,6 +86,7 @@ $emailBody .= "Service Interest: $service\n";
 $emailBody .= "Message:\n" . ($message ?: 'No additional message provided') . "\n\n";
 $emailBody .= "---\n";
 $emailBody .= "Submitted: " . date('Y-m-d H:i:s') . "\n";
+$emailBody .= "IP Address: " . $ip . "\n";
 
 $headers = "From: sales@gstsaudi.com\r\n";
 $headers .= "Reply-To: $email\r\n";
@@ -76,6 +98,10 @@ $mailSent = @mail($to, $subject, $emailBody, $headers);
 ob_end_clean();
 
 if ($mailSent) {
+    // Update rate limit
+    $submissions[] = $current_time;
+    file_put_contents($rate_limit_file, json_encode($submissions));
+    
     $autoReplySubject = 'Thank you for contacting GST International';
     $autoReplyBody = "Dear $name,\n\n";
     $autoReplyBody .= "Thank you for your consultation request. We have received your inquiry regarding $service.\n\n";
