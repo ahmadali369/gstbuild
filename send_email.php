@@ -1,21 +1,27 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// CRITICAL: No whitespace or output before this line!
+
+// Turn off all output buffering and errors that might corrupt JSON
+ob_start();
+error_reporting(0);
+ini_set('display_errors', 0);
 
 // CORS headers
 header('Access-Control-Allow-Origin: *'); 
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
-header('Content-Type: application/json');
+header('Content-Type: application/json; charset=UTF-8');
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    ob_end_clean();
     http_response_code(200);
     exit();
 }
 
 // Only allow POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    ob_end_clean();
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method not allowed']);
     exit();
@@ -27,6 +33,7 @@ $data = json_decode($json, true);
 
 // Check if JSON is valid
 if (json_last_error() !== JSON_ERROR_NONE) {
+    ob_end_clean();
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
     exit();
@@ -34,12 +41,13 @@ if (json_last_error() !== JSON_ERROR_NONE) {
 
 // Validate required fields
 if (empty($data['name']) || empty($data['email']) || empty($data['phone']) || empty($data['service'])) {
+    ob_end_clean();
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Missing required fields']);
     exit();
 }
 
-// Sanitize inputs - use htmlspecialchars instead of FILTER_SANITIZE_STRING (deprecated)
+// Sanitize inputs
 $name = htmlspecialchars(trim($data['name']), ENT_QUOTES, 'UTF-8');
 $email = filter_var(trim($data['email']), FILTER_SANITIZE_EMAIL);
 $phone = htmlspecialchars(trim($data['phone']), ENT_QUOTES, 'UTF-8');
@@ -49,12 +57,13 @@ $message = isset($data['message']) ? htmlspecialchars(trim($data['message']), EN
 
 // Validate email format
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    ob_end_clean();
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Invalid email format']);
     exit();
 }
 
-// Email configuration
+// Email configuration - ONLY TO sales@gstsaudi.com
 $to = 'sales@gstsaudi.com';
 $subject = 'New Consultation Request - ' . $service;
 
@@ -69,8 +78,8 @@ $emailBody .= "Message:\n" . ($message ?: 'No additional message provided') . "\
 $emailBody .= "---\n";
 $emailBody .= "Submitted: " . date('Y-m-d H:i:s') . "\n";
 
-// Email headers - use no-reply address as From
-$headers = "From: noreply@gstsaudi.com\r\n";
+// Email headers - FROM sales@gstsaudi.com (not noreply)
+$headers = "From: sales@gstsaudi.com\r\n";
 $headers .= "Reply-To: $email\r\n";
 $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
 $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
@@ -78,8 +87,11 @@ $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
 // Send main email
 $mailSent = @mail($to, $subject, $emailBody, $headers);
 
+// Clear any output buffer before sending JSON
+ob_end_clean();
+
 if ($mailSent) {
-    // Send auto-reply to customer
+    // Send auto-reply to customer FROM sales@gstsaudi.com
     $autoReplySubject = 'Thank you for contacting GST International';
     $autoReplyBody = "Dear $name,\n\n";
     $autoReplyBody .= "Thank you for your consultation request. We have received your inquiry regarding $service.\n\n";
@@ -89,7 +101,7 @@ if ($mailSent) {
     $autoReplyBody .= "sales@gstsaudi.com\n";
     $autoReplyBody .= "+966 11 488 3087";
     
-    $autoReplyHeaders = "From: noreply@gstsaudi.com\r\n";
+    $autoReplyHeaders = "From: sales@gstsaudi.com\r\n";
     $autoReplyHeaders .= "Reply-To: sales@gstsaudi.com\r\n";
     $autoReplyHeaders .= "X-Mailer: PHP/" . phpversion() . "\r\n";
     $autoReplyHeaders .= "Content-Type: text/plain; charset=UTF-8\r\n";
