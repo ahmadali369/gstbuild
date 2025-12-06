@@ -1,12 +1,12 @@
 <?php
-// Prevent any output before headers
-ob_start();
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-// Set headers for CORS (adjust origin to your domain)
-header('Access-Control-Allow-Origin: *'); // Change * to your domain in production
+// CORS headers
+header('Access-Control-Allow-Origin: *'); 
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
-header('Content-Type: application/json; charset=utf-8');
+header('Content-Type: application/json');
 
 // Handle preflight OPTIONS request
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -21,9 +21,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit();
 }
 
-// Get JSON data from request
+// Get and decode JSON input
 $json = file_get_contents('php://input');
 $data = json_decode($json, true);
+
+// Check if JSON is valid
+if (json_last_error() !== JSON_ERROR_NONE) {
+    http_response_code(400);
+    echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
+    exit();
+}
 
 // Validate required fields
 if (empty($data['name']) || empty($data['email']) || empty($data['phone']) || empty($data['service'])) {
@@ -32,13 +39,13 @@ if (empty($data['name']) || empty($data['email']) || empty($data['phone']) || em
     exit();
 }
 
-// Sanitize inputs
-$name = htmlspecialchars(strip_tags($data['name']), ENT_QUOTES, 'UTF-8');
-$email = filter_var($data['email'], FILTER_SANITIZE_EMAIL);
-$phone = htmlspecialchars(strip_tags($data['phone']), ENT_QUOTES, 'UTF-8');
-$company = !empty($data['company']) ? htmlspecialchars(strip_tags($data['company']), ENT_QUOTES, 'UTF-8') : 'Not provided';
-$service = htmlspecialchars(strip_tags($data['service']), ENT_QUOTES, 'UTF-8');
-$message = !empty($data['message']) ? htmlspecialchars(strip_tags($data['message']), ENT_QUOTES, 'UTF-8') : 'No message provided';
+// Sanitize inputs - use htmlspecialchars instead of FILTER_SANITIZE_STRING (deprecated)
+$name = htmlspecialchars(trim($data['name']), ENT_QUOTES, 'UTF-8');
+$email = filter_var(trim($data['email']), FILTER_SANITIZE_EMAIL);
+$phone = htmlspecialchars(trim($data['phone']), ENT_QUOTES, 'UTF-8');
+$company = isset($data['company']) ? htmlspecialchars(trim($data['company']), ENT_QUOTES, 'UTF-8') : '';
+$service = htmlspecialchars(trim($data['service']), ENT_QUOTES, 'UTF-8');
+$message = isset($data['message']) ? htmlspecialchars(trim($data['message']), ENT_QUOTES, 'UTF-8') : '';
 
 // Validate email format
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -49,95 +56,54 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
 
 // Email configuration
 $to = 'sales@gstsaudi.com';
-$subject = 'Consultation Request - ' . $service;
+$subject = 'New Consultation Request - ' . $service;
 
-// Create email body for sales team
+// Build email body
 $emailBody = "New Consultation Request\n\n";
 $emailBody .= "Name: $name\n";
 $emailBody .= "Email: $email\n";
 $emailBody .= "Phone: $phone\n";
-$emailBody .= "Company: $company\n";
+$emailBody .= "Company: " . ($company ?: 'Not provided') . "\n";
 $emailBody .= "Service Interest: $service\n";
-$emailBody .= "Message:\n$message\n\n";
+$emailBody .= "Message:\n" . ($message ?: 'No additional message provided') . "\n\n";
 $emailBody .= "---\n";
 $emailBody .= "Submitted: " . date('Y-m-d H:i:s') . "\n";
 
-// Email headers for sales team
-$headers = "From: $email\r\n";
+// Email headers - use no-reply address as From
+$headers = "From: noreply@gstsaudi.com\r\n";
 $headers .= "Reply-To: $email\r\n";
 $headers .= "X-Mailer: PHP/" . phpversion() . "\r\n";
 $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
 
-// Send email to sales team
+// Send main email
 $mailSent = @mail($to, $subject, $emailBody, $headers);
 
-// Send auto-reply to customer
-$autoReplySubject = 'Thank you for contacting GST International';
-$autoReplyBody = "Dear $name,\n\n";
-$autoReplyBody .= "Thank you for your consultation request. We have received your inquiry regarding $service.\n\n";
-$autoReplyBody .= "Our team will review your request and get back to you within 24-48 hours.\n\n";
-$autoReplyBody .= "Best regards,\n";
-$autoReplyBody .= "GST International Team\n";
-$autoReplyBody .= "sales@gstsaudi.com\n";
-$autoReplyBody .= "+966 11 488 3087";
-
-$autoReplyHeaders = "From: sales@gstsaudi.com\r\n";
-$autoReplyHeaders .= "Reply-To: sales@gstsaudi.com\r\n";
-$autoReplyHeaders .= "X-Mailer: PHP/" . phpversion() . "\r\n";
-$autoReplyHeaders .= "Content-Type: text/plain; charset=UTF-8\r\n";
-
-@mail($email, $autoReplySubject, $autoReplyBody, $autoReplyHeaders);
-
-// Clear any output buffer
-ob_end_clean();
-
-// Send clean JSON response
 if ($mailSent) {
+    // Send auto-reply to customer
+    $autoReplySubject = 'Thank you for contacting GST International';
+    $autoReplyBody = "Dear $name,\n\n";
+    $autoReplyBody .= "Thank you for your consultation request. We have received your inquiry regarding $service.\n\n";
+    $autoReplyBody .= "Our team will review your request and get back to you within 24-48 hours.\n\n";
+    $autoReplyBody .= "Best regards,\n";
+    $autoReplyBody .= "GST International Team\n";
+    $autoReplyBody .= "sales@gstsaudi.com\n";
+    $autoReplyBody .= "+966 11 488 3087";
+    
+    $autoReplyHeaders = "From: noreply@gstsaudi.com\r\n";
+    $autoReplyHeaders .= "Reply-To: sales@gstsaudi.com\r\n";
+    $autoReplyHeaders .= "X-Mailer: PHP/" . phpversion() . "\r\n";
+    $autoReplyHeaders .= "Content-Type: text/plain; charset=UTF-8\r\n";
+    
+    // Send auto-reply (don't fail if this fails)
+    @mail($email, $autoReplySubject, $autoReplyBody, $autoReplyHeaders);
+    
     http_response_code(200);
-    echo json_encode([
-        'success' => true, 
-        'message' => 'Email sent successfully'
-    ]);
+    echo json_encode(['success' => true, 'message' => 'Email sent successfully']);
 } else {
     http_response_code(500);
-    echo json_encode([
-        'success' => false, 
-        'message' => 'Failed to send email'
-    ]);
+    echo json_encode(['success' => false, 'message' => 'Failed to send email. Please try again later.']);
 }
-
-exit();
 ?>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 <!-- <?php
