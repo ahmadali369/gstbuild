@@ -2,4 +2,4 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/gstsaudicpanel/public_html/
     - /bin/mkdir -p $DEPLOYPATH
-    - /bin/cp -R assets index.html favicon.png placeholder.svg robots.txt .htaccess $DEPLOYPATH
+    - /bin/cp -R assets index.html send_email.php favicon.png placeholder.svg robots.txt .htaccess $DEPLOYPATH
